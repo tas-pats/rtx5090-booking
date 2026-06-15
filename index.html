@@ -1,24 +1,68 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Asset Booking</title>
-  <!-- Pulls in the FullCalendar library -->
+  <title>RTX 5090 Booking</title>
   <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js'></script>
   <style>
-    body { font-family: Arial, sans-serif; margin: 20px; }
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+      margin: 20px; 
+      background-color: #f9fafb;
+    }
+    h2 { color: #111827; }
+    
     .controls { 
-      background: #f4f4f9; 
-      padding: 15px; 
-      border-radius: 8px; 
+      background: #ffffff; 
+      padding: 20px; 
+      border-radius: 12px; 
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
       margin-bottom: 20px; 
       display: flex; 
-      gap: 10px; 
+      gap: 12px; 
       align-items: center;
       flex-wrap: wrap;
     }
-    input, button { padding: 8px; }
-    #calendar { max-width: 1000px; margin: 0 auto; }
-    /* Makes the cursor a pointer so people know they can click events to delete them */
+    
+    input, select, button { 
+      padding: 10px 14px; 
+      border: 1px solid #d1d5db; 
+      border-radius: 8px; 
+      font-size: 14px; 
+      background-color: #fff;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    
+    input:focus, select:focus { border-color: #0d6efd; }
+    select { cursor: pointer; }
+    
+    button { 
+      background: #0d6efd; 
+      color: white; 
+      border: none; 
+      font-weight: 600; 
+      cursor: pointer; 
+      padding: 10px 20px;
+    }
+    button:hover { background: #0b5ed7; }
+    
+    .time-group {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: #f3f4f6;
+      padding: 6px 12px;
+      border-radius: 8px;
+    }
+    
+    #calendar { 
+      max-width: 1000px; 
+      margin: 0 auto; 
+      background: #ffffff; 
+      padding: 20px; 
+      border-radius: 12px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+    }
     .fc-event { cursor: pointer; } 
   </style>
 </head>
@@ -27,24 +71,101 @@
 <h2>📅 RTX 5090 Booking System</h2>
  
 <div class="controls">
-  <input id="user" placeholder="Your Name (e.g. Gytis)">
-  <input id="asset" value="RTX 5090" placeholder="Asset">
-  <input id="start" type="datetime-local" step="900">
-  <input id="end" type="datetime-local" step="900">
+  <input id="user" placeholder="Your Name (e.g. Gytis)" style="width: 150px;">
+  <input id="asset" value="RTX 5090" style="display:none;">
+  
+  <div class="time-group">
+    <strong>Start:</strong>
+    <input id="start-date" type="date" onchange="autoFillEndDate()">
+    <select id="start-hour"><option value="" disabled selected>Hr</option></select>
+    <span>:</span>
+    <select id="start-minute">
+      <option value="00">00</option>
+      <option value="15">15</option>
+      <option value="30">30</option>
+      <option value="45">45</option>
+    </select>
+  </div>
+  
+  <div class="time-group">
+    <strong>End:</strong>
+    <input id="end-date" type="date">
+    <select id="end-hour"><option value="" disabled selected>Hr</option></select>
+    <span>:</span>
+    <select id="end-minute">
+      <option value="00">00</option>
+      <option value="15">15</option>
+      <option value="30">30</option>
+      <option value="45">45</option>
+    </select>
+  </div>
+  
   <button onclick="addBooking()">Book Time</button>
 </div>
  
 <div id="calendar"></div>
  
 <script type="module">
+// 🛑 IMPORTANT: DO NOT CHANGE THESE TWO IMPORT LINES 🛑
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import {
-  getFirestore, collection, addDoc,
-  onSnapshot, deleteDoc, doc, getDocs, query, where
-} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
- 
-// --- YOUR FIREBASE CONFIG ---
-// 🔴 REPLACE THESE WITH YOUR REAL VALUES 🔴
+import { getFirestore, collection, addDoc, onSnapshot, deleteDoc, doc, getDocs, query, where } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+// ==========================================
+// 1. UI SETUP (Runs first so the screen always loads)
+// ==========================================
+
+// Populate the Hours dropdowns (00 to 23)
+const startHourSelect = document.getElementById("start-hour");
+const endHourSelect = document.getElementById("end-hour");
+for (let hour = 0; hour < 24; hour++) {
+  const formattedHour = String(hour).padStart(2, '0');
+  startHourSelect.add(new Option(formattedHour, formattedHour));
+  endHourSelect.add(new Option(formattedHour, formattedHour));
+}
+
+// Auto-fill end date to save clicks
+window.autoFillEndDate = function() {
+  const sDate = document.getElementById("start-date").value;
+  const eDate = document.getElementById("end-date").value;
+  if (sDate && !eDate) {
+    document.getElementById("end-date").value = sDate;
+  }
+};
+
+const today = new Date().toISOString().split('T')[0];
+const startDatePicker = document.getElementById("start-date");
+const endDatePicker = document.getElementById("end-date");
+
+startDatePicker.value = today;
+startDatePicker.min = today; // Blocks past days
+
+endDatePicker.value = today;
+endDatePicker.min = today;   // Blocks past days
+// ==========================================
+
+// Initialize FullCalendar
+const calendarEl = document.getElementById('calendar');
+let calendar = new FullCalendar.Calendar(calendarEl, {
+  initialView: 'timeGridWeek',
+  headerToolbar: {
+    left: 'prev,next today',
+    center: 'title',
+    right: 'dayGridMonth,timeGridWeek,timeGridDay'
+  },
+  events: [], 
+  eventClick: async function(info) {
+    if (confirm(`Cancel booking for ${info.event.title}?`)) {
+      await deleteDoc(doc(db, "bookings", info.event.id));
+    }
+  }
+});
+calendar.render();
+
+// ==========================================
+// 2. FIREBASE DATABASE SETUP
+// ==========================================
+
+// 🔴 REPLACE THESE VALUES WITH YOUR REAL KEYS 🔴
 const firebaseConfig = {
   apiKey: "AIzaSyDM7vAvMqis2STLR7XFfnYurdgnl1yemNI",
   authDomain: "rtx5090-booking.firebaseapp.com",
@@ -54,34 +175,15 @@ const firebaseConfig = {
   appId: "1:820231493761:web:135d32ac244c95469dd580",
   measurementId: "G-YPVJGGRDV1"
 };
- 
+
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
 const bookingsRef = collection(db, "bookings");
 
-// Setup the Calendar
-let calendar;
-document.addEventListener('DOMContentLoaded', function() {
-  const calendarEl = document.getElementById('calendar');
-  calendar = new FullCalendar.Calendar(calendarEl, {
-    initialView: 'timeGridWeek', // Starts on a weekly view
-    headerToolbar: {
-      left: 'prev,next today',
-      center: 'title',
-      right: 'dayGridMonth,timeGridWeek,timeGridDay'
-    },
-    events: [], 
-    // Delete an event when clicked
-    eventClick: async function(info) {
-      if (confirm(`Cancel booking for ${info.event.title}?`)) {
-        await deleteDoc(doc(db, "bookings", info.event.id));
-      }
-    }
-  });
-  calendar.render();
-});
- 
-// Check for overlapping bookings
+// ==========================================
+// 3. BOOKING LOGIC
+// ==========================================
+
 async function isAvailable(asset, start, end) {
   const q = query(bookingsRef, where("asset", "==", asset));
   const snapshot = await getDocs(q);
@@ -92,15 +194,40 @@ async function isAvailable(asset, start, end) {
   });
 }
  
-// Add booking
 window.addBooking = async function () {
   const user = document.getElementById("user").value;
   const asset = document.getElementById("asset").value;
-  const start = document.getElementById("start").value;
-  const end = document.getElementById("end").value;
+  
+  const sDate = document.getElementById("start-date").value;
+  const eDate = document.getElementById("end-date").value;
+  
+  const sHour = document.getElementById("start-hour").value;
+  const sMin = document.getElementById("start-minute").value;
+  const eHour = document.getElementById("end-hour").value;
+  const eMin = document.getElementById("end-minute").value;
  
-  if (!user || !asset || !start || !end) {
-    alert("Please fill in all fields (Name, Asset, Start, End)");
+  if (!user || !sDate || !eDate || !sHour || !eHour) {
+    alert("Please fill in Name, Dates, and pick your Hours.");
+    return;
+  }
+  
+  const start = `${sDate}T${sHour}:${sMin}`;
+  const end = `${eDate}T${eHour}:${eMin}`;
+  
+  // ==========================================
+  // 👇 NEW: Prevent booking a time in the past
+  // ==========================================
+  const now = new Date();
+  const bookingStart = new Date(start);
+  
+  if (bookingStart < now) {
+    alert("❌ You cannot book a time in the past!");
+    return;
+  }
+  // ==========================================
+  
+  if (start >= end) {
+    alert("❌ End time must be after the start time!");
     return;
   }
  
@@ -113,9 +240,12 @@ window.addBooking = async function () {
  
   await addDoc(bookingsRef, { user, asset, start, end });
   
-  // Clear the start/end fields after successful booking
-  document.getElementById("start").value = "";
-  document.getElementById("end").value = "";
+  document.getElementById("start-date").value = "";
+  document.getElementById("end-date").value = "";
+  document.getElementById("start-hour").value = "";
+  document.getElementById("end-hour").value = "";
+  document.getElementById("start-minute").value = "00";
+  document.getElementById("end-minute").value = "00";
 };
  
 // Live update UI from Database
@@ -125,18 +255,15 @@ onSnapshot(bookingsRef, snapshot => {
     const data = docSnap.data();
     events.push({
       id: docSnap.id,
-      title: `${data.asset} (${data.user})`, // Shows "RTX 5090 (Gytis)" on the calendar
+      title: `${data.user}`,
       start: data.start,
       end: data.end,
-      color: '#0d6efd' // Nice blue color for the blocks
+      color: '#0d6efd'
     });
   });
   
-  // Push new events to the calendar
-  if (calendar) {
-    calendar.removeAllEventSources();
-    calendar.addEventSource(events);
-  }
+  calendar.removeAllEventSources();
+  calendar.addEventSource(events);
 });
 </script>
  
