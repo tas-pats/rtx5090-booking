@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Asset Booking</title>
+  <!-- Pulls in the FullCalendar library -->
+  <script src='https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js'></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    .controls { 
+      background: #f4f4f9; 
+      padding: 15px; 
+      border-radius: 8px; 
+      margin-bottom: 20px; 
+      display: flex; 
+      gap: 10px; 
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    input, button { padding: 8px; }
+    #calendar { max-width: 1000px; margin: 0 auto; }
+    /* Makes the cursor a pointer so people know they can click events to delete them */
+    .fc-event { cursor: pointer; } 
+  </style>
+</head>
+<body>
+ 
+<h2>📅 RTX 5090 Booking System</h2>
+ 
+<div class="controls">
+  <input id="user" placeholder="Your email (e.g. Name.Surname@uwe.ac.uk)">
+  <input id="asset" value="RTX 5090" placeholder="Asset">
+  <input id="start" type="datetime-local">
+  <input id="end" type="datetime-local">
+  <button onclick="addBooking()">Book Time</button>
+</div>
+ 
+<div id="calendar"></div>
+ 
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import {
+  getFirestore, collection, addDoc,
+  onSnapshot, deleteDoc, doc, getDocs, query, where
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+ 
+// --- YOUR FIREBASE CONFIG ---
+// 🔴 REPLACE THESE WITH YOUR REAL VALUES 🔴
+const firebaseConfig = {
+  apiKey: "AIzaSyDM7vAvMqis2STLR7XFfnYurdgnl1yemNI",
+  authDomain: "rtx5090-booking.firebaseapp.com",
+  projectId: "rtx5090-booking",
+  storageBucket: "rtx5090-booking.firebasestorage.app",
+  messagingSenderId: "820231493761",
+  appId: "1:820231493761:web:135d32ac244c95469dd580",
+  measurementId: "G-YPVJGGRDV1"
+};
+ 
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const bookingsRef = collection(db, "bookings");
+
+// Setup the Calendar
+let calendar;
+document.addEventListener('DOMContentLoaded', function() {
+  const calendarEl = document.getElementById('calendar');
+  calendar = new FullCalendar.Calendar(calendarEl, {
+    initialView: 'timeGridWeek', // Starts on a weekly view
+    headerToolbar: {
+      left: 'prev,next today',
+      center: 'title',
+      right: 'dayGridMonth,timeGridWeek,timeGridDay'
+    },
+    events: [], 
+    // Delete an event when clicked
+    eventClick: async function(info) {
+      if (confirm(`Cancel booking for ${info.event.title}?`)) {
+        await deleteDoc(doc(db, "bookings", info.event.id));
+      }
+    }
+  });
+  calendar.render();
+});
+ 
+// Check for overlapping bookings
+async function isAvailable(asset, start, end) {
+  const q = query(bookingsRef, where("asset", "==", asset));
+  const snapshot = await getDocs(q);
+ 
+  return !snapshot.docs.some(d => {
+    const b = d.data();
+    return !(end <= b.start || start >= b.end);
+  });
+}
+ 
+// Add booking
+window.addBooking = async function () {
+  const user = document.getElementById("user").value;
+  const asset = document.getElementById("asset").value;
+  const start = document.getElementById("start").value;
+  const end = document.getElementById("end").value;
+ 
+  if (!user || !asset || !start || !end) {
+    alert("Please fill in all fields (Name, Asset, Start, End)");
+    return;
+  }
+ 
+  const available = await isAvailable(asset, start, end);
+ 
+  if (!available) {
+    alert("❌ Time slot already booked by someone else!");
+    return;
+  }
+ 
+  await addDoc(bookingsRef, { user, asset, start, end });
+  
+  // Clear the start/end fields after successful booking
+  document.getElementById("start").value = "";
+  document.getElementById("end").value = "";
+};
+ 
+// Live update UI from Database
+onSnapshot(bookingsRef, snapshot => {
+  const events = [];
+  snapshot.forEach(docSnap => {
+    const data = docSnap.data();
+    events.push({
+      id: docSnap.id,
+      title: `${data.asset} (${data.user})`, // Shows "RTX 5090 (Gytis)" on the calendar
+      start: data.start,
+      end: data.end,
+      color: '#0d6efd' // Nice blue color for the blocks
+    });
+  });
+  
+  // Push new events to the calendar
+  if (calendar) {
+    calendar.removeAllEventSources();
+    calendar.addEventSource(events);
+  }
+});
+</script>
+ 
+</body>
+</html>
